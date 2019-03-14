@@ -1,5 +1,7 @@
 Linux kernel test modules
 =========================
 
-Linux kernel test modules that have not been upstreamed.
+Some of these are just toys, some are quick hacks, and some should probably go
+upstream.  Use at your own discretion.  PRs welcome.
+
 
