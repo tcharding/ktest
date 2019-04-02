@@ -13,10 +13,6 @@
 static unsigned int total_tests;
 static unsigned int failed_tests;
 
-/* List of items */
-static LIST_HEAD(ilist);
-#define TMODULE_NITEMS 10
-
 /* Basic list'able structure */
 struct item {
 	struct list_head list;
@@ -31,38 +27,40 @@ static struct item *create_item(int x)
 	if (!item)
 		return NULL;
 
+	INIT_LIST_HEAD(&item->list);
 	item->val = x;
 	return item;
 }
 
-static void destroy_item(struct item *item)
-{
-	kfree(item);
-}
-
-static void destroy_ilist(void)
+static void drain_ilist(struct list_head *head)
 {
 	struct item *cur, *tmp;
 
-	list_for_each_entry_safe(cur, tmp, &ilist, list) {
+	list_for_each_entry_safe(cur, tmp, head, list) {
 		list_del(&cur->list);
-		destroy_item(cur);
+		kfree(cur);
 	}
+	INIT_LIST_HEAD(head);
 }
 
-static int init_ilist(void)
+static int populate_ilist(struct list_head *head, int nr_items)
 {
 	struct item *cur;
 	int index, i;
 
-	for (i = TMODULE_NITEMS - 1; i >= 0; i--) {
+	if (nr_items < 1)
+		return -EINVAL;
+
+	for (i = nr_items - 1; i >= 0; i--) {
 		cur = create_item(i);
-		list_add(&cur->list, &ilist);
+		if (!cur)
+			goto out;
+		list_add(&cur->list, head);
 	}
 
 	/* Verify the order*/
 	index = 0;
-	list_for_each_entry(cur, &ilist, list) {
+	list_for_each_entry(cur, head, list) {
 		if (cur->val != index) {
 			pr_err("failed to verify list order at index: %d got: %d\n",
 				index, cur->val);
@@ -73,17 +71,37 @@ static int init_ilist(void)
 
 	return 0;
 out:
-	failed_tests++;
-	destroy_ilist();
+	drain_ilist(head);
 	return -1;
 }
 
-static int test_rotate(void) {
+static int test_rotate_single(void)
+{
+	LIST_HEAD(ilist);
 	struct item *ptr;
-	int val;
-	const int desired_front = 5; /* arbitrary value < TMODULE_NITEMS */
+	int val = 10;		/* Arbitrary value */
 
-	total_tests++;
+	ptr = create_item(val);
+	if (!ptr)
+		return -ENOMEM;
+
+	list_add(&ptr->list, &ilist);
+
+	list_rotate_to_front(&ptr->list, &ilist);
+
+	return 0;
+}
+
+static int test_rotate_many(void)
+{
+	LIST_HEAD(ilist);
+	struct item *ptr;
+	int desired_front;
+	int val;
+	int ret;
+
+	populate_ilist(&ilist, 10);
+	desired_front = 5;	/* Arbitrary value < 10 */
 
 	/* Get an arbitrary entry to make front of list */
 	list_for_each_entry(ptr, &ilist, list) {
@@ -96,33 +114,39 @@ static int test_rotate(void) {
 	/* Verify rotation worked */
 	val = desired_front;
 	list_for_each_entry(ptr, &ilist, list) {
-		pr_info("rotate verify: want: %d got: %d\n", val, ptr->val);
 		if (ptr->val != val) {
 			pr_err("rotate verify failed: want: %d got: %d\n",
 				val, ptr->val);
-			failed_tests++;
-			return -1;
+			ret = -1;
+			goto out;
 		}
 
 		val++;
-		if (val % TMODULE_NITEMS == 0)
+		if (val % 10 == 0)
 			val = 0;
 	}
 
-	return 0;
+	ret = 0;
+out:
+	drain_ilist(&ilist);
+	return ret;
+}
+
+/* do_test() - Do a unit test */
+static void do_test(int (*fn)(void)) {
+	int ret;
+
+	total_tests++;
+	ret = fn();
+	if (ret)
+		failed_tests++;
 }
 
 /* test() - Test module hook. */
 static void test(void)
 {
-	int ret;
-
-	ret = init_ilist();
-	if (ret)
-		return;
-
-	(void)test_rotate();
-	destroy_ilist();
+	do_test(test_rotate_single);
+	do_test(test_rotate_many);
 }
 
 static int __init tmodule_init(void)
