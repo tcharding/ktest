@@ -149,9 +149,24 @@ static void test(void)
 	do_test(test_rotate_many);
 }
 
+/* verify_list_debug()- Verify that __list_add_valid emits warnings. */
+static void verify_list_debug(void)
+{
+	LIST_HEAD(new);
+	LIST_HEAD(prev);
+	LIST_HEAD(next);
+
+	__list_add_valid(&new, &prev, &next);
+}
+
+#define VERIFY_LIST_DEBUG 0
 static int __init tmodule_init(void)
 {
 	pr_info("loaded\n");
+
+	if (VERIFY_LIST_DEBUG)
+		verify_list_debug();
+
 	test();
 
 	if (failed_tests == 0)
