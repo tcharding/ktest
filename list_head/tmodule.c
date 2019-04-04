@@ -92,6 +92,85 @@ static int test_rotate_single(void)
 	return 0;
 }
 
+/* Rotate the second of two items to the front. */
+static int test_rotate_two(void)
+{
+	LIST_HEAD(ilist);
+	struct item *first, *second;
+
+	first = create_item(1);
+	if (!first)
+		return -ENOMEM;
+
+	second = create_item(2);
+	if (!second)
+		return -ENOMEM;
+
+	list_add(&first->list, &ilist);
+	list_add_tail(&second->list, &ilist);
+
+	list_rotate_to_front(&second->list, &ilist);
+
+	return 0;
+}
+
+/* Rotate with 3 items. */
+static int test_rotate_three(void)
+{
+	LIST_HEAD(ilist);
+	struct item *first, *second, *third;
+
+	first = create_item(1);
+	if (!first)
+		return -ENOMEM;
+
+	second = create_item(2);
+	if (!second)
+		return -ENOMEM;
+
+	third = create_item(3);
+	if (!third)
+		return -ENOMEM;
+
+	list_add(&third->list, &ilist);
+	list_add(&second->list, &ilist);
+	list_add(&first->list, &ilist);
+
+	list_rotate_to_front(&second->list, &ilist); /* order: 2, 1, 3 */
+	list_rotate_to_front(&third->list, &ilist); /* order: 3, 2, 1 */
+
+	return 0;
+}
+
+/* Rotate with 5 items. */
+static int test_rotate_five(void)
+{
+	LIST_HEAD(ilist);
+	struct item *first, *second, *third, *fourth, *fifth;
+
+	first = create_item(1);
+	second = create_item(2);
+	third = create_item(3);
+	fourth = create_item(3);
+	fifth = create_item(3);
+	if (!first || !second || !third)
+		return -ENOMEM;
+
+	list_add(&fifth->list, &ilist);
+	list_add(&fourth->list, &ilist);
+	list_add(&third->list, &ilist);
+	list_add(&second->list, &ilist);
+	list_add(&first->list, &ilist);
+
+	/* order: 1 2 3 4 5 */
+
+	list_rotate_to_front(&fourth->list, &ilist); /* order: 4 1 2 3 5 */
+	list_rotate_to_front(&first->list, &ilist); /* order: 1 4 2 3 5 */
+	list_rotate_to_front(&fifth->list, &ilist); /* order: 5 1 4 2 3 */
+
+	return 0;
+}
+
 static int test_rotate_many(void)
 {
 	LIST_HEAD(ilist);
@@ -132,6 +211,31 @@ out:
 	return ret;
 }
 
+#ifdef FORCE_ERROR
+/*
+ * All unit tests above fail to trigger an error?
+ * Smash the list on purpose.
+ */
+static int smash_the_list(void)
+{
+	LIST_HEAD(ilist);
+	struct item *first, *second, *third;
+
+	first = create_item(1);
+	second = create_item(2);
+	third = create_item(3);
+	if (!first || !second || !third)
+		return -ENOMEM;
+
+	list_add(&ilist, &second->list);
+	list_add(&ilist, &first->list);
+
+	__list_add(&third->list, &ilist, &second->list);
+
+	return 0;
+}
+#endif
+
 /* do_test() - Do a unit test */
 static void do_test(int (*fn)(void)) {
 	int ret;
@@ -145,8 +249,17 @@ static void do_test(int (*fn)(void)) {
 /* test() - Test module hook. */
 static void test(void)
 {
-	do_test(test_rotate_single);
 	do_test(test_rotate_many);
+
+	do_test(test_rotate_single);
+	do_test(test_rotate_two);
+	do_test(test_rotate_three);
+	do_test(test_rotate_five);
+
+#ifdef FORCE_ERROR
+	/* This force triggers the DEBUG_LIST errors */
+	smash_the_list();
+#endif
 }
 
 /* verify_list_debug()- Verify that __list_add_valid emits warnings. */
@@ -160,6 +273,7 @@ static void verify_list_debug(void)
 }
 
 #define VERIFY_LIST_DEBUG 0
+#define FORCE_ERROR 0
 static int __init tmodule_init(void)
 {
 	pr_info("loaded\n");
